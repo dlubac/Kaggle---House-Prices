@@ -6,6 +6,7 @@ from matplotlib.colors import ListedColormap
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from scipy.stats import norm
+from sklearn.preprocessing import Imputer
 
 # Set seed for reproducability
 np.random.seed(9320)
@@ -25,40 +26,39 @@ prices_log = train['SalePrice']
 sns.distplot(prices_log, fit=norm)
 #plt.show()
 
-# Find columns with NaN values
-cols_with_na = train.columns[train.isnull().any()].tolist()
+# Replace NAs in numeric columns with mean
+#numeric_cols = list(train.select_dtypes(include=['int16', 'int32', 'int64', 'float16', 'float32', 'float64']))
+#train[numeric_cols] = train[numeric_cols].apply(lambda x: x.fillna(np.rint(x.mean())))
 
-# Remove columns with NaN values
+# Remove any columns in NAs
+cols_with_na = train.columns[train.isnull().any()].tolist()
 train = train.drop(cols_with_na, axis=1)
 
 # Factorize object (string) columns
 df_obj_cols = list(train.select_dtypes(include=[np.object]))
 train[df_obj_cols] = train[df_obj_cols].apply(lambda x: pd.factorize(x)[0])
 
+# Impute missing values
+imp = Imputer(missing_values=-1, strategy='most_frequent', copy=False)
+train_imputed = imp.fit_transform(train)
+train = pd.DataFrame(train_imputed, index=train.index, columns=train.columns)
+
 # Split training dataset
-msk = np.random.rand(len(train)) < 0.7
-df_train = train[msk]
-df_test = train[~msk]
+x = train[train.columns.values[1:-1]]
+y = train[train.columns.values[-1]]
 
-x_train = df_train[df_train.columns.values[1:-1]]
-y_train = df_train[df_train.columns.values[-1]]
+x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=9320, test_size=0.33)
 
-x_test = df_train[df_test.columns.values[1:-1]]
-y_test = df_train[df_test.columns.values[-1]]
-
-# Create random forest regressor and model
-rfr = RandomForestRegressor(n_estimators=64, n_jobs=-1)
+# Create a random forest model
+rfr = RandomForestRegressor(n_estimators=1000, min_samples_leaf=2, n_jobs=-1)
 model = rfr.fit(x_train, y_train)
+print('Model accuracy: ' + str(model.score(x_test, y_test)))
 
-# View most important features to model
-coef = pd.Series(rfr.feature_importances_, index=x_train.columns).sort_values(ascending=False)
-print(coef.head(25))
-
-# Predict values
-y_preds = rfr.predict(x_test)
-
-print(len(df_train))
-print(len(df_test))
-print(len(y_preds))
-
+# Visualize model accuracy
+predictions = model.predict(x_test)
+sns.regplot(predictions, y_test, marker='.')
+plt.xlabel('Predicted Price')
+plt.ylabel('Actual Price')
+plt.title('Random Forest Model Accuracy')
+#plt.show()
 
